@@ -78,7 +78,49 @@ function file_get_html($url, $use_include_path = false, $context=null, $offset =
     // We DO force the tags to be terminated.
     $dom = new simple_html_dom(null, $lowercase, $forceTagsClosed, $target_charset, $stripRN, $defaultBRText, $defaultSpanText);
     // For sourceforge users: uncomment the next line and comment the retreive_url_contents line 2 lines down if it is not already done.
-    $contents = file_get_contents($url, $use_include_path, $context, $offset);
+    //$contents = file_get_contents($url, $use_include_path, $context, $offset);
+    
+    $url = str_replace( "&amp;", "&", urldecode(trim($url)) );
+	$javascript_loop = 0;
+    $timeout = 5;
+    $cookie = tempnam ("/tmp", "CURLCOOKIE");
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows; U; Windows NT 5.1; rv:1.7.3) Gecko/20041001 Firefox/0.10.1");
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true );
+    curl_setopt($ch, CURLOPT_ENCODING, "");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_AUTOREFERER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);    # required for https urls
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeout );
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+    $contents = curl_exec($ch);
+    $response = curl_getinfo($ch);
+    curl_close ( $ch );
+    if ($response['http_code'] == 400) {
+        return false;
+    }
+    if (!function_exists('gzinflate')) {
+        throw new Exception('Cannot decompress gzip response body without gzinflate()');
+    }
+    $offset = 0;
+    // Look for gzip 'signature'
+    if (substr($contents, 0, 2) === "\x1f\x8b") {
+        $offset = 2;
+    }
+    // Check the format byte
+    if (substr($contents, $offset, 1) === "\x08") {
+        $contents = gzinflate(substr($contents, $offset + 8));
+    }
+
+    //$contents = inflateInit($contents);
+    $encoding = mb_detect_encoding($contents, ['UTF-8', 'ASCII', 'GB2312', 'GBK']);
+    if ($encoding && $encoding != 'UTF-8') {
+        $contents = mb_convert_encoding($contents, 'UTF-8', $encoding);
+    }
+    
     // Paperg - use our own mechanism for getting the contents as we want to control the timeout.
     //$contents = retrieve_url_contents($url);
     if (empty($contents) || strlen($contents) > MAX_FILE_SIZE)
